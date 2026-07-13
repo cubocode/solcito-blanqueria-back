@@ -24,7 +24,32 @@ const Ventas = sequelize.define(
         },
         metodo_pago: {
             type: DataTypes.STRING,
-            allowNull: false, // 'Efectivo', 'Tarjeta', 'Transferencia', 'QR', 'Cuenta Corriente'
+            allowNull: false, // 'Efectivo', 'Tarjeta', 'Transferencia', 'QR', 'Cuenta Corriente', 'Combinado'
+        },
+        pago_efectivo: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0.00,
+        },
+        pago_tarjeta: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0.00,
+        },
+        pago_transferencia: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0.00,
+        },
+        pago_qr: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0.00,
+        },
+        pago_cta_cte: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            defaultValue: 0.00,
         },
         total: {
             type: DataTypes.DECIMAL(10, 2),

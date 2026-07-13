@@ -1,5 +1,24 @@
 const { Cajas, CajaMovimientos, Ventas } = require("../models");
 
+const getSalePart = (sale, method) => {
+    const eff = parseFloat(sale.pago_efectivo || 0);
+    const tar = parseFloat(sale.pago_tarjeta || 0);
+    const tra = parseFloat(sale.pago_transferencia || 0);
+    const qr = parseFloat(sale.pago_qr || 0);
+    const cc = parseFloat(sale.pago_cta_cte || 0);
+
+    if (eff === 0 && tar === 0 && tra === 0 && qr === 0 && cc === 0) {
+        return sale.metodo_pago === method ? parseFloat(sale.total) : 0;
+    }
+
+    if (method === "Efectivo") return eff;
+    if (method === "Tarjeta") return tar;
+    if (method === "Transferencia") return tra;
+    if (method === "QR") return qr;
+    if (method === "Cuenta Corriente") return cc;
+    return 0;
+};
+
 const CajaController = {
     // GET /api/cajas/activa
     async getActive(req, res) {
@@ -20,8 +39,7 @@ const CajaController = {
             });
 
             const salesCash = sales
-                .filter((s) => s.metodo_pago === "Efectivo")
-                .reduce((sum, s) => sum + parseFloat(s.total), 0);
+                .reduce((sum, s) => sum + getSalePart(s, "Efectivo"), 0);
 
             const clientPaymentsCash = movements
                 .filter((m) => m.tipo === "Cobro" && (m.metodo_pago === "Efectivo" || !m.metodo_pago))
@@ -36,22 +54,19 @@ const CajaController = {
                 .reduce((sum, m) => sum + parseFloat(m.monto), 0);
 
             const CardTotal = sales
-                .filter((s) => s.metodo_pago === "Tarjeta")
-                .reduce((sum, s) => sum + parseFloat(s.total), 0) +
+                .reduce((sum, s) => sum + getSalePart(s, "Tarjeta"), 0) +
                 movements
                 .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "Tarjeta")
                 .reduce((sum, m) => sum + parseFloat(m.monto), 0);
 
             const TransferTotal = sales
-                .filter((s) => s.metodo_pago === "Transferencia")
-                .reduce((sum, s) => sum + parseFloat(s.total), 0) +
+                .reduce((sum, s) => sum + getSalePart(s, "Transferencia"), 0) +
                 movements
                 .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "Transferencia")
                 .reduce((sum, m) => sum + parseFloat(m.monto), 0);
 
             const QRTotal = sales
-                .filter((s) => s.metodo_pago === "QR")
-                .reduce((sum, s) => sum + parseFloat(s.total), 0) +
+                .reduce((sum, s) => sum + getSalePart(s, "QR"), 0) +
                 movements
                 .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "QR")
                 .reduce((sum, m) => sum + parseFloat(m.monto), 0);
@@ -65,14 +80,16 @@ const CajaController = {
             }));
 
             sales
-                .filter((s) => s.metodo_pago === "Efectivo")
                 .forEach((s) => {
-                    formattedMovements.push({
-                        date: s.fecha,
-                        concept: `Venta POS #${s.id}`,
-                        type: "Venta",
-                        amount: parseFloat(s.total)
-                    });
+                    const cashAmount = getSalePart(s, "Efectivo");
+                    if (cashAmount > 0) {
+                        formattedMovements.push({
+                            date: s.fecha,
+                            concept: `Venta POS #${s.id}${s.metodo_pago === "Combinado" ? " (Parte Efectivo)" : ""}`,
+                            type: "Venta",
+                            amount: cashAmount
+                        });
+                    }
                 });
 
             // Sort movements by date descending
@@ -176,8 +193,7 @@ const CajaController = {
             const sales = await Ventas.findAll({ where: { caja_id: active.id } });
 
             const salesCash = sales
-                .filter((s) => s.metodo_pago === "Efectivo")
-                .reduce((sum, s) => sum + parseFloat(s.total), 0);
+                .reduce((sum, s) => sum + getSalePart(s, "Efectivo"), 0);
 
             const clientPaymentsCash = movements
                 .filter((m) => m.tipo === "Cobro" && (m.metodo_pago === "Efectivo" || !m.metodo_pago))
@@ -191,12 +207,33 @@ const CajaController = {
                 .filter((m) => m.tipo === "Egreso")
                 .reduce((sum, m) => sum + parseFloat(m.monto), 0);
 
+            const CardTotal = sales
+                .reduce((sum, s) => sum + getSalePart(s, "Tarjeta"), 0) +
+                movements
+                .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "Tarjeta")
+                .reduce((sum, m) => sum + parseFloat(m.monto), 0);
+
+            const TransferTotal = sales
+                .reduce((sum, s) => sum + getSalePart(s, "Transferencia"), 0) +
+                movements
+                .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "Transferencia")
+                .reduce((sum, m) => sum + parseFloat(m.monto), 0);
+
+            const QRTotal = sales
+                .reduce((sum, s) => sum + getSalePart(s, "QR"), 0) +
+                movements
+                .filter((m) => m.tipo === "Cobro" && m.metodo_pago === "QR")
+                .reduce((sum, m) => sum + parseFloat(m.monto), 0);
+
             const theoretical =
                 parseFloat(active.monto_inicial) +
                 salesCash +
                 clientPaymentsCash +
                 manualInflow -
-                manualOutflow;
+                manualOutflow +
+                CardTotal +
+                TransferTotal +
+                QRTotal;
 
             const parsedDiff = parsedReal - theoretical;
 
@@ -238,6 +275,28 @@ const CajaController = {
         } catch (error) {
             console.error("Error al obtener historial de caja:", error);
             res.status(500).json({ error: "Error al obtener historial de cajas" });
+        }
+    },
+
+    // GET /api/cajas/movimientos
+    async getAllMovements(req, res) {
+        try {
+            const list = await CajaMovimientos.findAll({
+                order: [["fecha", "DESC"]]
+            });
+            const formatted = list.map((m) => ({
+                id: m.id,
+                caja_id: m.caja_id,
+                tipo: m.tipo,
+                metodo_pago: m.metodo_pago,
+                monto: parseFloat(m.monto),
+                concepto: m.concepto,
+                fecha: m.fecha
+            }));
+            res.json(formatted);
+        } catch (error) {
+            console.error("Error al obtener todos los movimientos:", error);
+            res.status(500).json({ error: "Error al obtener movimientos" });
         }
     }
 };

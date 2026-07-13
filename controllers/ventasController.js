@@ -16,14 +16,18 @@ const VentasController = {
                 order: [["fecha", "DESC"]]
             });
 
-            // Map database records to client-side model structure
             const formatted = list.map((s) => ({
-                id: `SALE-${s.id}`,
+                id: `V-${s.id}`,
                 dbId: s.id,
                 date: s.fecha,
                 clientName: s.cliente ? s.cliente.nombre : "Consumidor Final",
                 clientId: s.cliente_id,
                 paymentMethod: s.metodo_pago,
+                pago_efectivo: parseFloat(s.pago_efectivo || 0),
+                pago_tarjeta: parseFloat(s.pago_tarjeta || 0),
+                pago_transferencia: parseFloat(s.pago_transferencia || 0),
+                pago_qr: parseFloat(s.pago_qr || 0),
+                pago_cta_cte: parseFloat(s.pago_cta_cte || 0),
                 total: parseFloat(s.total),
                 items: s.items.map((item) => ({
                     productId: item.producto ? item.producto.codigo : `OLD-${item.producto_id}`,
@@ -45,7 +49,7 @@ const VentasController = {
     async create(req, res) {
         const t = await sequelize.transaction();
         try {
-            const { metodo_pago, total, cliente_id, items } = req.body;
+            const { metodo_pago, total, cliente_id, items, pago_efectivo, pago_tarjeta, pago_transferencia, pago_qr, pago_cta_cte } = req.body;
 
             if (!metodo_pago || total === undefined || !items || items.length === 0) {
                 await t.rollback();
@@ -78,10 +82,25 @@ const VentasController = {
                 }
             }
 
+            // Initialize splits
+            let eff = parseFloat(pago_efectivo || 0);
+            let tar = parseFloat(pago_tarjeta || 0);
+            let tra = parseFloat(pago_transferencia || 0);
+            let qr = parseFloat(pago_qr || 0);
+            let cc = parseFloat(pago_cta_cte || 0);
+
+            if (metodo_pago !== "Combinado") {
+                eff = metodo_pago === "Efectivo" ? parseFloat(total) : 0;
+                tar = metodo_pago === "Tarjeta" ? parseFloat(total) : 0;
+                tra = metodo_pago === "Transferencia" ? parseFloat(total) : 0;
+                qr = metodo_pago === "QR" ? parseFloat(total) : 0;
+                cc = metodo_pago === "Cuenta Corriente" ? parseFloat(total) : 0;
+            }
+
             // 3. Register Cuenta Corriente limits check
             let client = null;
             let currentBalance = 0;
-            if (metodo_pago === "Cuenta Corriente") {
+            if (cc > 0) {
                 if (!cliente_id) {
                     await t.rollback();
                     return res.status(400).json({ error: "Debe seleccionar un cliente registrado para Cuenta Corriente." });
@@ -97,13 +116,13 @@ const VentasController = {
                 }
                 currentBalance = parseFloat(client.saldo);
                 const limit = parseFloat(client.limite_credito);
-                if (currentBalance + parseFloat(total) > limit) {
+                if (currentBalance + cc > limit) {
                     await t.rollback();
-                    return res.status(400).json({ error: `El total de la venta excede el límite de crédito del cliente ($${limit.toLocaleString("es-AR")}).` });
+                    return res.status(400).json({ error: `El total a Cuenta Corriente excede el límite de crédito disponible del cliente ($${(limit - currentBalance).toLocaleString("es-AR")}).` });
                 }
 
-                // Increment debt balance
-                await client.update({ saldo: currentBalance + parseFloat(total) }, { transaction: t });
+                // Increment debt balance by the Cuenta Corriente portion only!
+                await client.update({ saldo: currentBalance + cc }, { transaction: t });
             }
 
             // 4. Create Sale row
@@ -111,6 +130,11 @@ const VentasController = {
                 {
                     cliente_id: cliente_id || null,
                     metodo_pago,
+                    pago_efectivo: eff,
+                    pago_tarjeta: tar,
+                    pago_transferencia: tra,
+                    pago_qr: qr,
+                    pago_cta_cte: cc,
                     total: parseFloat(total),
                     caja_id: activeCaja.id
                 },
@@ -118,15 +142,15 @@ const VentasController = {
             );
 
             // If credit sale, log to ledger movements
-            if (metodo_pago === "Cuenta Corriente" && client) {
+            if (cc > 0 && client) {
                 const ClienteMovimientos = require("../models/ClienteMovimientos");
                 await ClienteMovimientos.create(
                     {
                         cliente_id: client.id,
                         tipo: "Compra",
-                        monto: parseFloat(total),
-                        saldo_resultante: currentBalance + parseFloat(total),
-                        descripcion: `Compra a crédito (Venta #${sale.id})`
+                        monto: cc,
+                        saldo_resultante: currentBalance + cc,
+                        descripcion: `Compra a crédito ${metodo_pago === "Combinado" ? "(Pago Combinado) " : ""}(Venta #${sale.id})`
                     },
                     { transaction: t }
                 );
@@ -169,11 +193,16 @@ const VentasController = {
 
             // Return sale formatted for immediate UI reprint receipt
             res.status(201).json({
-                id: `SALE-${sale.id}`,
+                id: `V-${sale.id}`,
                 date: sale.fecha,
                 clientName,
                 clientId: cliente_id || null,
                 paymentMethod: metodo_pago,
+                pago_efectivo: eff,
+                pago_tarjeta: tar,
+                pago_transferencia: tra,
+                pago_qr: qr,
+                pago_cta_cte: cc,
                 items,
                 total
             });
