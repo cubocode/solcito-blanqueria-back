@@ -26,12 +26,18 @@ app.use(
     cors({
         origin: function (origin, callback) {
             if (!origin) return callback(null, true);
+
             const allowedOrigins = [
                 "http://localhost:3000",
                 "http://localhost:3002",
-                "http://192.168.1.71:3000"
+                "http://192.168.1.71:3000",
+                "https://solcito.cubocode.com.ar"
             ];
-            if (allowedOrigins.indexOf(origin) !== -1 || /^https?:\/\/(?:.*\.)?cubocode\.com\.ar\/?$/.test(origin)) {
+
+            // Limpiamos barras diagonales al final del string de origen para evitar fallos de coincidencia
+            const sanitizedOrigin = origin.replace(/\/$/, "");
+
+            if (allowedOrigins.includes(sanitizedOrigin) || /\.cubocode\.com\.ar$/.test(sanitizedOrigin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));
