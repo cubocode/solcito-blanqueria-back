@@ -31,7 +31,7 @@ app.use(
                 "http://localhost:3002",
                 "http://192.168.1.71:3000"
             ];
-            if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith("cubocode.com.ar")) {
+            if (allowedOrigins.indexOf(origin) !== -1 || /^https?:\/\/(?:.*\.)?cubocode\.com\.ar\/?$/.test(origin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));
