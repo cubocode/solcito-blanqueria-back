@@ -24,13 +24,19 @@ const proveedoresRoutes = require("./routes/proveedoresRoutes");
 
 app.use(
     cors({
-        origin: [
-            "http://localhost:3000",
-            "http://192.168.1.71:3000",
-            "http://localhost:3002",
-            "https://solcito.cubocode.com.ar",
-            "https://solcito.cubocode.com.ar/",
-        ],
+        origin: function (origin, callback) {
+            if (!origin) return callback(null, true);
+            const allowedOrigins = [
+                "http://localhost:3000",
+                "http://localhost:3002",
+                "http://192.168.1.71:3000"
+            ];
+            if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith("cubocode.com.ar")) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allowedHeaders: ["Content-Type", "Authorization"],
