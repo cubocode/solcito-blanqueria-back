@@ -53,7 +53,7 @@ const ProductosController = {
     async create(req, res) {
         const t = await sequelize.transaction();
         try {
-            const { codigo, nombre, categoria, descripcion, precio_costo, precio_venta, cantidad, umbral, kit_nombre } = req.body;
+            const { codigo, nombre, categoria, descripcion, precio_costo, precio_venta, cantidad, umbral, kit_nombre, color, tamano } = req.body;
 
             if (!codigo || !nombre || !categoria || precio_costo === undefined || precio_venta === undefined) {
                 await t.rollback();
@@ -80,6 +80,8 @@ const ProductosController = {
                     precio_venta: parseFloat(precio_venta) || 0,
                     cantidad: parseInt(cantidad, 10) || 0,
                     umbral: parseInt(umbral, 10) || 0,
+                    color: color ? color.trim() : null,
+                    tamano: tamano ? tamano.trim() : null,
                     kit_id
                 },
                 { transaction: t }
@@ -104,7 +106,7 @@ const ProductosController = {
         const t = await sequelize.transaction();
         try {
             const { id } = req.params;
-            const { codigo, nombre, categoria, descripcion, precio_costo, precio_venta, cantidad, umbral, kit_nombre } = req.body;
+            const { codigo, nombre, categoria, descripcion, precio_costo, precio_venta, cantidad, umbral, kit_nombre, color, tamano } = req.body;
 
             const prod = await Productos.findByPk(id, { transaction: t });
             if (!prod) {
@@ -132,6 +134,8 @@ const ProductosController = {
                     precio_venta: parseFloat(precio_venta) || 0,
                     cantidad: parseInt(cantidad, 10) || 0,
                     umbral: parseInt(umbral, 10) || 0,
+                    color: color ? color.trim() : null,
+                    tamano: tamano ? tamano.trim() : null,
                     kit_id
                 },
                 { transaction: t }

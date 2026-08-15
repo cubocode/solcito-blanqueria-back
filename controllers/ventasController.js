@@ -1,4 +1,4 @@
-const { sequelize, Ventas, VentasItems, Productos, Clientes, Cajas } = require("../models");
+const { sequelize, Ventas, VentasItems, Productos, Clientes, Cajas, ClienteMovimientos } = require("../models");
 
 const VentasController = {
     // GET /api/ventas
@@ -29,6 +29,8 @@ const VentasController = {
                 pago_qr: parseFloat(s.pago_qr || 0),
                 pago_cta_cte: parseFloat(s.pago_cta_cte || 0),
                 total: parseFloat(s.total),
+                estado: s.estado,
+                motivo_anulacion: s.motivo_anulacion,
                 items: s.items.map((item) => ({
                     productId: item.producto ? item.producto.codigo : `OLD-${item.producto_id}`,
                     productName: item.producto ? item.producto.nombre : "Producto Eliminado",
@@ -216,6 +218,99 @@ const VentasController = {
             }
             console.error("Error al crear venta:", error);
             res.status(500).json({ error: error.message || "Error al procesar la venta." });
+        }
+    },
+
+    // POST /api/ventas/:id/anular
+    async cancel(req, res) {
+        const { id } = req.params;
+        const { motivo } = req.body;
+
+        if (!motivo || !motivo.trim()) {
+            return res.status(400).json({ error: "Debe especificar el motivo de la anulación." });
+        }
+
+        const t = await sequelize.transaction();
+        try {
+            // 1. Fetch sale with items
+            const sale = await Ventas.findByPk(id, {
+                include: [{ model: VentasItems, as: "items" }],
+                transaction: t
+            });
+
+            if (!sale) {
+                await t.rollback();
+                return res.status(404).json({ error: "Venta no encontrada." });
+            }
+
+            if (sale.estado === "Anulada") {
+                await t.rollback();
+                return res.status(400).json({ error: "La venta ya se encuentra anulada." });
+            }
+
+            // 2. Validate cash shift is open
+            const activeCaja = await Cajas.findOne({
+                where: { estado: "Abierto" },
+                transaction: t
+            });
+            if (!activeCaja) {
+                await t.rollback();
+                return res.status(400).json({ error: "Debe abrir el turno de caja para realizar anulaciones." });
+            }
+
+            // 3. Revert product stocks (increase stock by quantity sold)
+            for (const item of sale.items) {
+                const prod = await Productos.findByPk(item.producto_id, { transaction: t });
+                if (prod) {
+                    await prod.update({ cantidad: prod.cantidad + item.cantidad }, { transaction: t });
+                }
+            }
+
+            // 4. Revert Cuenta Corriente balance if credit sale
+            const cc = parseFloat(sale.pago_cta_cte || 0);
+            if (cc > 0 && sale.cliente_id) {
+                const client = await Clientes.findByPk(sale.cliente_id, { transaction: t });
+                if (!client) {
+                    await t.rollback();
+                    return res.status(404).json({ error: "Cliente asociado a la venta no encontrado." });
+                }
+                const currentBalance = parseFloat(client.saldo);
+                await client.update({ saldo: currentBalance - cc }, { transaction: t });
+
+                // Log ledger movement
+                await ClienteMovimientos.create(
+                    {
+                        cliente_id: client.id,
+                        tipo: "Anulación",
+                        monto: cc,
+                        saldo_resultante: currentBalance - cc,
+                        descripcion: `Anulación de venta a crédito (Venta #V-${sale.id})`
+                    },
+                    { transaction: t }
+                );
+            }
+
+            // 5. Update Sale row state
+            await sale.update(
+                {
+                    estado: "Anulada",
+                    motivo_anulacion: motivo.trim()
+                },
+                { transaction: t }
+            );
+
+            await t.commit();
+            res.json({ message: "Venta anulada con éxito.", saleId: sale.id });
+        } catch (error) {
+            if (t && !t.finished) {
+                try {
+                    await t.rollback();
+                } catch (rollbackErr) {
+                    console.error("Error al realizar rollback de transacción:", rollbackErr);
+                }
+            }
+            console.error("Error al anular venta:", error);
+            res.status(500).json({ error: error.message || "Error al anular la venta." });
         }
     }
 };

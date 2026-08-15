@@ -63,6 +63,15 @@ const Ventas = sequelize.define(
                 key: "id",
             },
         },
+        estado: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: "Activa",
+        },
+        motivo_anulacion: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
     },
     {
         tableName: "ventas",

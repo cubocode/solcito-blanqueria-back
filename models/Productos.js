@@ -44,6 +44,14 @@ const Productos = sequelize.define(
             allowNull: false,
             defaultValue: 5,
         },
+        color: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        tamano: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         kit_id: {
             type: DataTypes.INTEGER,
             allowNull: true,

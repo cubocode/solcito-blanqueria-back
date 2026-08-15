@@ -35,7 +35,7 @@ const CajaController = {
                 where: { caja_id: active.id }
             });
             const sales = await Ventas.findAll({
-                where: { caja_id: active.id }
+                where: { caja_id: active.id, estado: "Activa" }
             });
 
             const salesCash = sales
@@ -190,7 +190,7 @@ const CajaController = {
 
             // Calculate theoretical final balance
             const movements = await CajaMovimientos.findAll({ where: { caja_id: active.id } });
-            const sales = await Ventas.findAll({ where: { caja_id: active.id } });
+            const sales = await Ventas.findAll({ where: { caja_id: active.id, estado: "Activa" } });
 
             const salesCash = sales
                 .reduce((sum, s) => sum + getSalePart(s, "Efectivo"), 0);
