@@ -32,11 +32,14 @@ const VentasController = {
                 estado: s.estado,
                 motivo_anulacion: s.motivo_anulacion,
                 items: s.items.map((item) => ({
-                    productId: item.producto ? item.producto.codigo : `OLD-${item.producto_id}`,
+                    productId: item.producto_id,
+                    productCode: item.producto ? item.producto.codigo : `OLD-${item.producto_id}`,
                     productName: item.producto ? item.producto.nombre : "Producto Eliminado",
                     quantity: item.cantidad,
                     salePrice: parseFloat(item.precio_unitario),
-                    subtotal: parseFloat(item.subtotal)
+                    subtotal: parseFloat(item.subtotal),
+                    color: item.producto ? item.producto.color : null,
+                    tamano: item.producto ? item.producto.tamano : null
                 }))
             }));
 
@@ -70,8 +73,7 @@ const VentasController = {
 
             // 2. Dry run stock check
             for (const item of items) {
-                const prod = await Productos.findOne({
-                    where: { codigo: item.productId },
+                const prod = await Productos.findByPk(item.productId, {
                     transaction: t
                 });
                 if (!prod) {
@@ -160,8 +162,7 @@ const VentasController = {
 
             // 5. Create Items rows and decrease stock
             for (const item of items) {
-                const prod = await Productos.findOne({
-                    where: { codigo: item.productId },
+                const prod = await Productos.findByPk(item.productId, {
                     transaction: t
                 });
 

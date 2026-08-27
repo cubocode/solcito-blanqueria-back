@@ -12,7 +12,6 @@ const Productos = sequelize.define(
         codigo: {
             type: DataTypes.STRING,
             allowNull: false,
-            unique: true,
         },
         nombre: {
             type: DataTypes.STRING,
@@ -64,6 +63,12 @@ const Productos = sequelize.define(
     {
         tableName: "productos",
         timestamps: false,
+        indexes: [
+            {
+                unique: true,
+                fields: ["codigo", "color", "tamano"]
+            }
+        ]
     }
 );
 
